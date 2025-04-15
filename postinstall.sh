@@ -1,3 +1,4 @@
 #!/bin/bash
-# install Playwright for deployment
-playwright install --with-deps
+# install only Chromium with necessary dependencies
+echo "▶ Installing Playwright Chromium with dependencies..."
+playwright install chromium --with-deps
