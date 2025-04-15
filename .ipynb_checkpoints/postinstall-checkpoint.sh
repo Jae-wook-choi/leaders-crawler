@@ -1,2 +1,3 @@
 #!/bin/bash
-playwright install chromium
+echo "▶ Installing Playwright Chromium with dependencies..."
+playwright install --with-deps

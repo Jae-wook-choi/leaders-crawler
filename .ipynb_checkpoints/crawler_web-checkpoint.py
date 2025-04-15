@@ -1,63 +1,55 @@
-import streamlit as st
+import requests
+from bs4 import BeautifulSoup
 import pandas as pd
+import streamlit as st
 import time
-from io import BytesIO
-from playwright.sync_api import sync_playwright
 
 def scrape_news(start_page, end_page):
     news_data = []
     base_url = "https://finance.naver.com/news/mainnews.naver?page="
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    }
 
-        for page_num in range(start_page, end_page + 1):
-            url = base_url + str(page_num)
-            page.goto(url)
+    for page_num in range(start_page, end_page + 1):
+        url = base_url + str(page_num)
+        print(f"▶ 페이지 요청 중: {url}")
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"❌ 요청 실패: {e}")
+            continue
 
-            try:
-                page.wait_for_selector(".newsList", timeout=5000)
-            except:
-                continue
+        soup = BeautifulSoup(response.text, "html.parser")
+        news_items = soup.select(".newsList a[target='_blank']")
 
-            news_elements = page.query_selector_all(".newsList a[target='_blank']")
-            for news in news_elements:
-                title = news.inner_text().strip()
-                link = news.get_attribute("href")
-                if title and link:
-                    news_data.append({"제목": title, "URL": link})
+        for item in news_items:
+            title = item.get_text(strip=True)
+            link = item.get("href")
+            if title and link:
+                full_url = link if link.startswith("http") else f"https://finance.naver.com{link}"
+                news_data.append({"제목": title, "URL": full_url})
 
-            time.sleep(1)
-
-        browser.close()
+        print(f"✅ 페이지 {page_num} 완료 - {len(news_items)}건 수집")
+        time.sleep(1.5)
 
     return pd.DataFrame(news_data)
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="네이버 뉴스 크롤러", layout="centered")
-st.title("\U0001F4F0 네이버 뉴스 크롤러")
-
-start_page = st.number_input("시작 페이지", min_value=1, max_value=100, value=1)
-end_page = st.number_input("종료 페이지", min_value=1, max_value=100, value=3)
+# Streamlit 인터페이스
+st.title("📈 네이버 금융 뉴스 크롤러")
+start_page = st.number_input("시작 페이지", value=1)
+end_page = st.number_input("종료 페이지", value=3)
 
 if st.button("크롤링 시작"):
-    with st.spinner("크롤링 중..."):
+    with st.spinner("뉴스 수집 중..."):
         df = scrape_news(start_page, end_page)
-
         if not df.empty:
-            st.success(f"{len(df)}개의 뉴스 기사가 수집되었습니다!")
+            st.success(f"{len(df)}개의 기사를 수집했습니다!")
             st.dataframe(df)
-
-            # 엑셀 다운로드
-            output = BytesIO()
-            df.to_excel(output, index=False, engine='openpyxl')
-            st.download_button(
-                label="\U0001F4E5 엑셀 다운로드",
-                data=output.getvalue(),
-                file_name="news_result.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            df.to_excel("news.xlsx", index=False)
+            with open("news.xlsx", "rb") as f:
+                st.download_button("엑셀 다운로드", f, file_name="news.xlsx")
         else:
-            st.warning("수집된 데이터가 없습니다.")
+            st.warning("기사를 찾을 수 없습니다.")
