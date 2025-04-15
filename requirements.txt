@@ -1,6 +1,4 @@
 streamlit
-selenium
 pandas
 openpyxl
-webdriver-manager
-pyvirtualdisplay
+playwright

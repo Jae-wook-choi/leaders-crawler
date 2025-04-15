@@ -1,63 +1,39 @@
 import streamlit as st
 import pandas as pd
 import time
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from pyvirtualdisplay import Display
 from io import BytesIO
+from playwright.sync_api import sync_playwright
 
 def scrape_news(start_page, end_page):
-    display = Display(visible=0, size=(1920, 1080))
-    display.start()
+    news_data = []
+    base_url = "https://finance.naver.com/news/mainnews.naver?page="
 
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
 
-    try:
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        for page_num in range(start_page, end_page + 1):
+            url = base_url + str(page_num)
+            page.goto(url)
 
-        news_data = []
-        base_url = "https://finance.naver.com/news/mainnews.naver?page="
-
-        for page in range(start_page, end_page + 1):
-            driver.get(base_url + str(page))
             try:
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CLASS_NAME, "newsList"))
-                )
+                page.wait_for_selector(".newsList", timeout=5000)
             except:
                 continue
 
-            news_elements = driver.find_elements(By.CSS_SELECTOR, ".newsList a[target='_blank']")
+            news_elements = page.query_selector_all(".newsList a[target='_blank']")
             for news in news_elements:
-                title = news.text.strip()
+                title = news.inner_text().strip()
                 link = news.get_attribute("href")
                 if title and link:
                     news_data.append({"제목": title, "URL": link})
 
             time.sleep(1)
 
-        return pd.DataFrame(news_data)
+        browser.close()
 
-    except Exception as e:
-        st.error(f"크롤링 중 오류 발생: {e}")
-        return pd.DataFrame()
-
-    finally:
-        try:
-            driver.quit()
-        except:
-            pass
-        display.stop()
+    return pd.DataFrame(news_data)
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="네이버 뉴스 크롤러", layout="centered")
